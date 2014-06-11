@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"runtime"
+	"strconv"
 	"time"
 )
 
@@ -17,9 +18,9 @@ const (
 )
 
 const (
-	Ltime  = iota << 1 //time format "2006/01/02 15:04:05"
-	Lfile              //file.go:123
-	Llevel             //[Trace|Debug|Info...]
+	Ltime  = 0x01 //time format "2006/01/02 15:04:05"
+	Lfile  = 0x02 //file.go:123
+	Llevel = 0x04 //[Trace|Debug|Info...]
 )
 
 var LevelName [6]string = [6]string{"Trace", "Debug", "Info", "Warn", "Error", "Fatal"}
@@ -97,8 +98,9 @@ func (l *Logger) Output(callDepth int, level int, format string, v ...interface{
 
 	if l.flag&Ltime > 0 {
 		now := time.Now().Format(TimeFormat)
+		buf = append(buf, '[')
 		buf = append(buf, now...)
-		buf = append(buf, " "...)
+		buf = append(buf, "] "...)
 	}
 
 	if l.flag&Lfile > 0 {
@@ -115,11 +117,16 @@ func (l *Logger) Output(callDepth int, level int, format string, v ...interface{
 			}
 		}
 
-		buf = append(buf, fmt.Sprintf("%s:%d ", file, line)...)
+		buf = append(buf, file...)
+		buf = append(buf, ':')
+
+		strconv.AppendInt(buf, int64(line), 10)
 	}
 
 	if l.flag&Llevel > 0 {
-		buf = append(buf, fmt.Sprintf("[%s] ", LevelName[level])...)
+		buf = append(buf, '[')
+		buf = append(buf, LevelName[level]...)
+		buf = append(buf, "] "...)
 	}
 
 	s := fmt.Sprintf(format, v...)
@@ -127,7 +134,7 @@ func (l *Logger) Output(callDepth int, level int, format string, v ...interface{
 	buf = append(buf, s...)
 
 	if s[len(s)-1] != '\n' {
-		buf = append(buf, "\n"...)
+		buf = append(buf, '\n')
 	}
 
 	l.msg <- buf
