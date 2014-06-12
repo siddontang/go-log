@@ -5,6 +5,7 @@ import (
 	"os"
 	"runtime"
 	"strconv"
+	"sync"
 	"time"
 )
 
@@ -18,16 +19,20 @@ const (
 )
 
 const (
-	Ltime  = 0x01 //time format "2006/01/02 15:04:05"
-	Lfile  = 0x02 //file.go:123
-	Llevel = 0x04 //[Trace|Debug|Info...]
+	Ltime  = 1 << iota //time format "2006/01/02 15:04:05"
+	Lfile              //file.go:123
+	Llevel             //[Trace|Debug|Info...]
 )
 
 var LevelName [6]string = [6]string{"Trace", "Debug", "Info", "Warn", "Error", "Fatal"}
 
 const TimeFormat = "2006/01/02 15:04:05"
 
+const maxBufPoolSize = 16
+
 type Logger struct {
+	sync.Mutex
+
 	level int
 	flag  int
 
@@ -35,6 +40,8 @@ type Logger struct {
 
 	quit chan struct{}
 	msg  chan []byte
+
+	bufs [][]byte
 }
 
 func New(handler Handler, flag int) *Logger {
@@ -48,6 +55,8 @@ func New(handler Handler, flag int) *Logger {
 	l.quit = make(chan struct{})
 
 	l.msg = make(chan []byte, 1024)
+
+	l.bufs = make([][]byte, 0, 16)
 
 	go l.run()
 
@@ -70,10 +79,34 @@ func (l *Logger) run() {
 		select {
 		case msg := <-l.msg:
 			l.handler.Write(msg)
+			l.putBuf(msg)
 		case <-l.quit:
 			l.handler.Close()
 		}
 	}
+}
+
+func (l *Logger) popBuf() []byte {
+	l.Lock()
+	var buf []byte
+	if len(l.bufs) == 0 {
+		buf = make([]byte, 0, 1024)
+	} else {
+		buf = l.bufs[len(l.bufs)-1]
+		l.bufs = l.bufs[0 : len(l.bufs)-1]
+	}
+	l.Unlock()
+
+	return buf
+}
+
+func (l *Logger) putBuf(buf []byte) {
+	l.Lock()
+	if len(l.bufs) < maxBufPoolSize {
+		buf = buf[0:0]
+		l.bufs = append(l.bufs, buf)
+	}
+	l.Unlock()
 }
 
 func (l *Logger) Close() {
@@ -94,7 +127,7 @@ func (l *Logger) Output(callDepth int, level int, format string, v ...interface{
 		return
 	}
 
-	buf := make([]byte, 0, 1024)
+	buf := l.popBuf()
 
 	if l.flag&Ltime > 0 {
 		now := time.Now().Format(TimeFormat)
