@@ -1,3 +1,4 @@
+//a simple log server to receive remote log and write with specified handler
 package main
 
 import (

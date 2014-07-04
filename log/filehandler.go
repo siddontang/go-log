@@ -38,6 +38,7 @@ func (h *FileHandler) Close() error {
 
 //RotatingFileHandler writes log a file, if file size exceeds maxBytes, 
 //it will backup current file and open a new one.
+//
 //max backup file number is set by backupCount, it will delete oldest if backups too many.
 type RotatingFileHandler struct {
 	fd *os.File
@@ -113,6 +114,7 @@ func (h *RotatingFileHandler) doRollover() {
 
 //TimeRotatingFileHandler writes log to a file, 
 //it will backup current and open a new one, with a period time you sepecified.
+//
 //refer: http://docs.python.org/2/library/logging.handlers.html.
 //same like python TimedRotatingFileHandler.
 type TimeRotatingFileHandler struct {
