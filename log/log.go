@@ -9,6 +9,7 @@ import (
 	"time"
 )
 
+//log level, from low to high, more high means more serious
 const (
 	LevelTrace = iota
 	LevelDebug
@@ -44,6 +45,7 @@ type Logger struct {
 	bufs [][]byte
 }
 
+//new a logger with specified handler and flag
 func New(handler Handler, flag int) *Logger {
 	var l = new(Logger)
 
@@ -63,6 +65,7 @@ func New(handler Handler, flag int) *Logger {
 	return l
 }
 
+//new a default logger with specified handler and flag: Ltime|Lfile|Llevel
 func NewDefault(handler Handler) *Logger {
 	return New(handler, Ltime|Lfile|Llevel)
 }
@@ -118,10 +121,13 @@ func (l *Logger) Close() {
 	l.quit = nil
 }
 
+//set log level, any log level less than it will not log
 func (l *Logger) SetLevel(level int) {
 	l.level = level
 }
 
+//a low interface, maybe you can use it for your special log format
+//but it may be not exported later......
 func (l *Logger) Output(callDepth int, level int, format string, v ...interface{}) {
 	if l.level > level {
 		return
@@ -173,26 +179,32 @@ func (l *Logger) Output(callDepth int, level int, format string, v ...interface{
 	l.msg <- buf
 }
 
+//log with Trace level
 func (l *Logger) Trace(format string, v ...interface{}) {
 	l.Output(2, LevelTrace, format, v...)
 }
 
+//log with Debug level
 func (l *Logger) Debug(format string, v ...interface{}) {
 	l.Output(2, LevelDebug, format, v...)
 }
 
+//log with info level
 func (l *Logger) Info(format string, v ...interface{}) {
 	l.Output(2, LevelInfo, format, v...)
 }
 
+//log with warn level
 func (l *Logger) Warn(format string, v ...interface{}) {
 	l.Output(2, LevelWarn, format, v...)
 }
 
+//log with error level
 func (l *Logger) Error(format string, v ...interface{}) {
 	l.Output(2, LevelError, format, v...)
 }
 
+//log with fatal level
 func (l *Logger) Fatal(format string, v ...interface{}) {
 	l.Output(2, LevelFatal, format, v...)
 }
