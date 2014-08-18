@@ -159,7 +159,8 @@ func (l *Logger) Output(callDepth int, level int, format string, v ...interface{
 		buf = append(buf, file...)
 		buf = append(buf, ':')
 
-		strconv.AppendInt(buf, int64(line), 10)
+		buf = strconv.AppendInt(buf, int64(line), 10)
+		buf = append(buf, ' ')
 	}
 
 	if l.flag&Llevel > 0 {
