@@ -3,237 +3,135 @@ package log
 import (
 	"fmt"
 	"os"
-	"runtime"
-	"strconv"
-	"sync"
-	"time"
 )
 
-//log level, from low to high, more high means more serious
-const (
-	LevelTrace = iota
-	LevelDebug
-	LevelInfo
-	LevelWarn
-	LevelError
-	LevelFatal
-)
+var logger = NewDefault(newStdHandler())
 
-const (
-	Ltime  = 1 << iota //time format "2006/01/02 15:04:05"
-	Lfile              //file.go:123
-	Llevel             //[Trace|Debug|Info...]
-)
-
-var LevelName [6]string = [6]string{"Trace", "Debug", "Info", "Warn", "Error", "Fatal"}
-
-const TimeFormat = "2006/01/02 15:04:05"
-
-const maxBufPoolSize = 16
-
-type Logger struct {
-	sync.Mutex
-
-	level int
-	flag  int
-
-	handler Handler
-
-	quit chan struct{}
-	msg  chan []byte
-
-	bufs [][]byte
+// SetDefaultLogger changes the global logger
+func SetDefaultLogger(l *Logger) {
+	logger = l
 }
 
-//new a logger with specified handler and flag
-func New(handler Handler, flag int) *Logger {
-	var l = new(Logger)
-
-	l.level = LevelInfo
-	l.handler = handler
-
-	l.flag = flag
-
-	l.quit = make(chan struct{})
-
-	l.msg = make(chan []byte, 1024)
-
-	l.bufs = make([][]byte, 0, 16)
-
-	go l.run()
-
-	return l
+// SetLevel changes the logger level
+func SetLevel(level Level) {
+	logger.SetLevel(level)
 }
 
-//new a default logger with specified handler and flag: Ltime|Lfile|Llevel
-func NewDefault(handler Handler) *Logger {
-	return New(handler, Ltime|Lfile|Llevel)
+// SetLevelByName changes the logger level by name
+func SetLevelByName(name string) {
+	logger.SetLevelByName(name)
 }
 
-func newStdHandler() *StreamHandler {
-	h, _ := NewStreamHandler(os.Stdout)
-	return h
+// Fatal records the log with fatal level and exits
+func Fatal(args ...interface{}) {
+	logger.Output(2, LevelFatal, fmt.Sprint(args...))
+	os.Exit(1)
 }
 
-var std = NewDefault(newStdHandler())
-
-func (l *Logger) run() {
-	for {
-		select {
-		case msg := <-l.msg:
-			l.handler.Write(msg)
-			l.putBuf(msg)
-		case <-l.quit:
-			l.handler.Close()
-		}
-	}
+// Fatalf records the log with fatal level and exits
+func Fatalf(format string, args ...interface{}) {
+	logger.Output(2, LevelFatal, fmt.Sprintf(format, args...))
+	os.Exit(1)
 }
 
-func (l *Logger) popBuf() []byte {
-	l.Lock()
-	var buf []byte
-	if len(l.bufs) == 0 {
-		buf = make([]byte, 0, 1024)
-	} else {
-		buf = l.bufs[len(l.bufs)-1]
-		l.bufs = l.bufs[0 : len(l.bufs)-1]
-	}
-	l.Unlock()
-
-	return buf
+// Fatalln records the log with fatal level and exits
+func Fatalln(args ...interface{}) {
+	logger.Output(2, LevelFatal, fmt.Sprintln(args...))
+	os.Exit(1)
 }
 
-func (l *Logger) putBuf(buf []byte) {
-	l.Lock()
-	if len(l.bufs) < maxBufPoolSize {
-		buf = buf[0:0]
-		l.bufs = append(l.bufs, buf)
-	}
-	l.Unlock()
+// Panic records the log with fatal level and panics
+func Panic(args ...interface{}) {
+	msg := fmt.Sprint(args...)
+	logger.Output(2, LevelError, msg)
+	panic(msg)
 }
 
-func (l *Logger) Close() {
-	if l.quit == nil {
-		return
-	}
-
-	close(l.quit)
-	l.quit = nil
+// Panicf records the log with fatal level and panics
+func Panicf(format string, args ...interface{}) {
+	msg := fmt.Sprintf(format, args...)
+	logger.Output(2, LevelError, msg)
+	panic(msg)
 }
 
-//set log level, any log level less than it will not log
-func (l *Logger) SetLevel(level int) {
-	l.level = level
+// Panicln records the log with fatal level and panics
+func Panicln(args ...interface{}) {
+	msg := fmt.Sprintln(args...)
+	logger.Output(2, LevelError, msg)
+	panic(msg)
 }
 
-//a low interface, maybe you can use it for your special log format
-//but it may be not exported later......
-func (l *Logger) Output(callDepth int, level int, format string, v ...interface{}) {
-	if l.level > level {
-		return
-	}
-
-	buf := l.popBuf()
-
-	if l.flag&Ltime > 0 {
-		now := time.Now().Format(TimeFormat)
-		buf = append(buf, '[')
-		buf = append(buf, now...)
-		buf = append(buf, "] "...)
-	}
-
-	if l.flag&Lfile > 0 {
-		_, file, line, ok := runtime.Caller(callDepth)
-		if !ok {
-			file = "???"
-			line = 0
-		} else {
-			for i := len(file) - 1; i > 0; i-- {
-				if file[i] == '/' {
-					file = file[i+1:]
-					break
-				}
-			}
-		}
-
-		buf = append(buf, file...)
-		buf = append(buf, ':')
-
-		buf = strconv.AppendInt(buf, int64(line), 10)
-		buf = append(buf, ' ')
-	}
-
-	if l.flag&Llevel > 0 {
-		buf = append(buf, '[')
-		buf = append(buf, LevelName[level]...)
-		buf = append(buf, "] "...)
-	}
-
-	s := fmt.Sprintf(format, v...)
-
-	buf = append(buf, s...)
-
-	if s[len(s)-1] != '\n' {
-		buf = append(buf, '\n')
-	}
-
-	l.msg <- buf
+// Print records the log with trace level
+func Print(args ...interface{}) {
+	logger.Output(2, LevelTrace, fmt.Sprint(args...))
 }
 
-//log with Trace level
-func (l *Logger) Trace(format string, v ...interface{}) {
-	l.Output(2, LevelTrace, format, v...)
+// Printf records the log with trace level
+func Printf(format string, args ...interface{}) {
+	logger.Output(2, LevelTrace, fmt.Sprintf(format, args...))
 }
 
-//log with Debug level
-func (l *Logger) Debug(format string, v ...interface{}) {
-	l.Output(2, LevelDebug, format, v...)
+// Println records the log with trace level
+func Println(args ...interface{}) {
+	logger.Output(2, LevelTrace, fmt.Sprintln(args...))
 }
 
-//log with info level
-func (l *Logger) Info(format string, v ...interface{}) {
-	l.Output(2, LevelInfo, format, v...)
+// Debug records the log with debug level
+func Debug(args ...interface{}) {
+	logger.Output(2, LevelDebug, fmt.Sprint(args...))
 }
 
-//log with warn level
-func (l *Logger) Warn(format string, v ...interface{}) {
-	l.Output(2, LevelWarn, format, v...)
+// Debugf records the log with debug level
+func Debugf(format string, args ...interface{}) {
+	logger.Output(2, LevelDebug, fmt.Sprintf(format, args...))
 }
 
-//log with error level
-func (l *Logger) Error(format string, v ...interface{}) {
-	l.Output(2, LevelError, format, v...)
+// Debugln records the log with debug level
+func Debugln(args ...interface{}) {
+	logger.Output(2, LevelDebug, fmt.Sprintln(args...))
 }
 
-//log with fatal level
-func (l *Logger) Fatal(format string, v ...interface{}) {
-	l.Output(2, LevelFatal, format, v...)
+// Error records the log with error level
+func Error(args ...interface{}) {
+	logger.Output(2, LevelError, fmt.Sprint(args...))
 }
 
-func SetLevel(level int) {
-	std.SetLevel(level)
+// Errorf records the log with error level
+func Errorf(format string, args ...interface{}) {
+	logger.Output(2, LevelError, fmt.Sprintf(format, args...))
 }
 
-func Trace(format string, v ...interface{}) {
-	std.Output(2, LevelTrace, format, v...)
+// Errorln records the log with error level
+func Errorln(args ...interface{}) {
+	logger.Output(2, LevelError, fmt.Sprintln(args...))
 }
 
-func Debug(format string, v ...interface{}) {
-	std.Output(2, LevelDebug, format, v...)
+// Info records the log with info level
+func Info(args ...interface{}) {
+	logger.Output(2, LevelInfo, fmt.Sprint(args...))
 }
 
-func Info(format string, v ...interface{}) {
-	std.Output(2, LevelInfo, format, v...)
+// Infof records the log with info level
+func Infof(format string, args ...interface{}) {
+	logger.Output(2, LevelInfo, fmt.Sprintf(format, args...))
 }
 
-func Warn(format string, v ...interface{}) {
-	std.Output(2, LevelWarn, format, v...)
+// Infoln records the log with info level
+func Infoln(args ...interface{}) {
+	logger.Output(2, LevelInfo, fmt.Sprintln(args...))
 }
 
-func Error(format string, v ...interface{}) {
-	std.Output(2, LevelError, format, v...)
+// Warn records the log with warn level
+func Warn(args ...interface{}) {
+	logger.Output(2, LevelWarn, fmt.Sprint(args...))
 }
 
-func Fatal(format string, v ...interface{}) {
-	std.Output(2, LevelFatal, format, v...)
+// Warnf records the log with warn level
+func Warnf(format string, args ...interface{}) {
+	logger.Output(2, LevelWarn, fmt.Sprintf(format, args...))
+}
+
+// Warnln records the log with warn level
+func Warnln(args ...interface{}) {
+	logger.Output(2, LevelWarn, fmt.Sprintln(args...))
 }

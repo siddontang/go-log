@@ -1,4 +1,4 @@
-// log package supplies more advanced features than go orign log package.
+// Package log supplies more advanced features than go orign log package.
 //
 // It supports log different level: trace, debug, info, warn, error, fatal.
 //
