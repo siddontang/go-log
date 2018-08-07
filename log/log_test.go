@@ -13,6 +13,12 @@ func TestStdStreamLog(t *testing.T) {
 	s.Close()
 
 	Info("hello world")
+
+	defer func() {
+		recover()
+	}()
+
+	Panic("hello wrold")
 }
 
 func TestRotatingFileLog(t *testing.T) {
